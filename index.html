@@ -112,7 +112,19 @@ body{
   width:21px;height:21px;border-radius:7px; display:grid;place-items:center;
   background:var(--accent-soft); color:var(--accent); flex-shrink:0;
 }
+.card > h2 .opt{
+  font-size:10.5px; font-weight:600; letter-spacing:.04em; padding:2px 8px; border-radius:20px;
+  background:var(--surface-3); color:var(--muted);
+}
 .card .desc{color:var(--muted); font-size:13px; margin:0 0 16px; line-height:1.65;}
+.consent{
+  margin-top:16px; padding:12px 14px; border-radius:var(--radius-sm);
+  background:var(--warn-soft); border:1px solid color-mix(in srgb,var(--warn) 42%,transparent);
+}
+.consent .switch-row{font-size:12.5px; line-height:1.6; color:var(--warn);}
+.consent .switch-row b{color:var(--warn); font-weight:700;}
+.consent.agreed{background:var(--ok-soft); border-color:color-mix(in srgb,var(--ok) 42%,transparent);}
+.consent.agreed .switch-row,.consent.agreed .switch-row b{color:var(--ok);}
 .card .desc:last-child{margin-bottom:0;}
 .panel[hidden]{display:none;}
 
@@ -345,7 +357,7 @@ footer a:hover{text-decoration:underline;}
 
     <div class="card" id="uploadCard">
       <h2><span class="num">1</span>選擇照片</h2>
-      <p class="desc">支援 JPG / PNG / WebP / HEIC（視瀏覽器而定）。圖片完全在你的瀏覽器內處理，不會上傳到任何伺服器。</p>
+      <p class="desc">支援 JPG / PNG / WebP / HEIC（視瀏覽器而定）。裁切與輸出完全在你的瀏覽器內完成；<b>只有當你主動使用下方的「AI 改圖」時，照片才會送出</b>。</p>
       <div class="dropzone" id="dropzone" tabindex="0" role="button" aria-label="選擇或拖曳照片">
         <div class="ico">
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4"/><path d="M17 8l-5-5-5 5"/><path d="M12 3v13"/></svg>
@@ -413,8 +425,47 @@ footer a:hover{text-decoration:underline;}
       </div>
     </div>
 
+    <div class="card" id="retouchCard" hidden>
+      <h2><span class="num">3</span>AI 改圖 <span class="opt">可選</span></h2>
+      <p class="desc">讓 Agnes AI 調整照片中人物的姿勢或畫風。臉部、身分與服裝會盡量維持原樣。不需要就跳過這一段，直接往下輸出。</p>
+
+      <label class="ctrl-label" style="margin-top:0;">姿勢</label>
+      <div class="style-grid" id="poseGrid"></div>
+
+      <label class="ctrl-label">畫風</label>
+      <div class="style-grid" id="photoStyleGrid"></div>
+
+      <div class="consent" id="consentRow">
+        <label class="switch-row" style="align-items:flex-start;">
+          <input type="checkbox" id="consentChk" style="margin-top:3px;">
+          <span>我了解按下改圖後，<b>這張照片會上傳至 Agnes AI 伺服器</b>進行處理。若是他人的肖像（例如學生或活動照片），請先取得當事人同意。</span>
+        </label>
+      </div>
+
+      <button class="btn-primary" id="retouchBtn" style="margin-top:14px;" disabled>
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3l1.9 4.6L18.5 9.5l-4.6 1.9L12 16l-1.9-4.6L5.5 9.5l4.6-1.9L12 3z"/><path d="M19 15l.8 2 2 .8-2 .8-.8 2-.8-2-2-.8 2-.8.8-2z"/></svg>
+        <span id="retouchBtnLabel">請先選擇姿勢或畫風</span>
+      </button>
+
+      <div class="progress-wrap" id="retouchProgress" hidden>
+        <div class="pbar"><i></i></div>
+        <div class="pmsg" id="retouchMsg">正在處理…</div>
+      </div>
+
+      <div class="btn-row" id="revertRow" style="margin-top:12px;" hidden>
+        <button class="btn" id="btnRevert"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 12a9 9 0 109-9 9 9 0 00-6.4 2.6L3 8"/><path d="M3 3v5h5"/></svg>還原成原始照片</button>
+      </div>
+
+      <div class="alert err" id="retouchErr" hidden>
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><path d="M15 9l-6 6M9 9l6 6"/></svg>
+        <div id="retouchErrMsg"></div>
+      </div>
+
+      <p class="desc" style="margin:14px 0 0;">API 金鑰設定在 <a href="#" id="gotoKey" style="color:var(--accent)">「AI 生圖」分頁的金鑰區</a>，兩個分頁共用同一把。</p>
+    </div>
+
     <div class="card" id="exportCard" hidden>
-      <h2><span class="num">3</span>輸出沖印檔</h2>
+      <h2><span class="num">4</span>輸出沖印檔</h2>
       <p class="desc">輸出 <b class="mono">2421 × 1122 px</b> 無損 PNG，並寫入 300 DPI 物理尺寸標記（pHYs），列印軟體會自動判讀成 20.5 × 9.5 公分。</p>
       <button class="btn-primary" id="cropBtn">
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4"/><path d="M7 10l5 5 5-5"/><path d="M12 15V3"/></svg>
@@ -630,6 +681,18 @@ function loadImage(src){
     img.src = src;
   });
 }
+/** 把任何來源的 <img> 轉成 data URL（不重新編碼，維持原始位元組） */
+async function imgToDataURL(img){
+  if (img.src.startsWith('data:')) return img.src;
+  const blob = await fetch(img.src).then(r => r.blob());
+  return new Promise((resolve, reject) => {
+    const r = new FileReader();
+    r.onload = () => resolve(r.result);
+    r.onerror = () => reject(new Error('無法讀取圖片資料。'));
+    r.readAsDataURL(blob);
+  });
+}
+
 /** 讀回 blob 確認實際像素，回傳 {w,h,bytes} */
 async function measureBlob(blob){
   const url = URL.createObjectURL(blob);
@@ -665,8 +728,10 @@ const dpiAlert  = document.getElementById('dpiAlert');
 
 const FRAG_B = 'pR2m';                          // ← 金鑰片段 2/3
 
-let srcImg = null;          // HTMLImageElement
+let srcImg = null;          // HTMLImageElement（目前在舞台上的圖）
 let srcName = 'photo';
+let originalImg = null;     // AI 改圖前的原始照片，供還原
+let originalName = 'photo';
 const view = { cx:0, cy:0, scale:1, rot:0 };
 let minScale = 0.05, maxScale = 12;
 
@@ -731,8 +796,14 @@ function fit(mode){
   render();
 }
 
-function loadIntoStage(img, name, mode){
+function loadIntoStage(img, name, mode, keepOriginal){
   srcImg = img;
+  if (!keepOriginal){
+    originalImg = img;
+    originalName = (name || 'photo').replace(/\.[^.]+$/, '');
+    const rr = document.getElementById('revertRow');
+    if (rr) rr.hidden = true;
+  }
   srcName = (name || 'photo').replace(/\.[^.]+$/, '').slice(0, 40) || 'photo';
   subject.src = img.src;
   srcDims.textContent = img.naturalWidth + ' × ' + img.naturalHeight + ' px';
@@ -742,6 +813,7 @@ function loadIntoStage(img, name, mode){
   fit(mode || 'cover');
   uploadCard.hidden = true;
   workCard.hidden = false;
+  document.getElementById('retouchCard').hidden = false;
   exportCard.hidden = false;
   document.getElementById('verifyBox').hidden = true;
   stageHint.style.opacity = '1';
@@ -931,6 +1003,125 @@ document.getElementById('cropBtn').addEventListener('click', async () => {
 });
 
 /* ============================================================
+   5b. AI 改圖（姿勢 / 畫風）—— 圖生圖，結果送回舞台
+   ============================================================ */
+const PRESERVE = 'keep every person\'s face, identity and facial features unchanged, keep their clothing exactly as in the original photo, keep the original background and setting, keep natural body proportions, do not stretch, elongate, squeeze or distort anyone, keep them sharp and in focus';
+
+const POSES = [
+  { id:'',       nm:'維持原姿勢', sub:'不調整',     p:'' },
+  { id:'smile',  nm:'自然站姿微笑', sub:'正面看鏡頭', p:'everyone standing naturally and smiling warmly at the camera' },
+  { id:'heart',  nm:'手比愛心',   sub:'可愛互動',   p:'everyone making a heart shape with their hands' },
+  { id:'jump',   nm:'跳躍動感',   sub:'活力氛圍',   p:'everyone jumping slightly in the air with joyful energetic expressions' },
+  { id:'thumb',  nm:'比讚手勢',   sub:'陽光正向',   p:'everyone giving a thumbs up with a cheerful expression' },
+  { id:'arm',    nm:'勾肩搭背',   sub:'團隊感',     p:'everyone standing arm in arm like close friends, warm genuine smiles' }
+];
+const PHOTO_STYLES = [
+  { id:'',       nm:'不改變畫風', sub:'維持原樣',   p:'' },
+  { id:'real',   nm:'原始真人風格', sub:'真實照片質感', p:'keep this as a natural, realistic photograph, do not stylize into a cartoon, anime or illustration, preserve authentic photographic detail, natural skin texture and realistic lighting' },
+  { id:'ghibli', nm:'吉卜力風',   sub:'手繪水彩感', p:'redraw this photo in the style of a Studio Ghibli / Hayao Miyazaki animated film, soft painterly backgrounds, warm nostalgic color palette, gentle hand-drawn line art' },
+  { id:'pixar',  nm:'迪士尼皮克斯', sub:'3D 動畫質感', p:'redraw this photo in the style of a modern Disney/Pixar 3D animated movie, expressive eyes, smooth stylized 3D character shading, vibrant colorful lighting' },
+  { id:'kdrama', nm:'韓劇質感',   sub:'柔光唯美',   p:'restyle this photo like a cinematic Korean drama promotional still, soft glowing skin tones, warm backlight, dreamy bokeh background, pastel color grading' },
+  { id:'hk',     nm:'復古港片',   sub:'霓虹懷舊',   p:'restyle this photo like a 1990s Hong Kong film poster, moody neon-lit night atmosphere, grainy film texture, bold dramatic lighting, retro color grading' },
+  { id:'ink',    nm:'中國水墨',   sub:'寫意筆觸',   p:'redraw this photo in traditional Chinese ink wash painting style, expressive brush strokes, monochrome ink tones with subtle color wash, rice-paper texture' },
+  { id:'lego',   nm:'樂高公仔',   sub:'玩具感',     p:'reimagine everyone in this photo as LEGO minifigure style characters, glossy plastic texture, blocky simplified shapes, bright toy-like colors' },
+  { id:'clay',   nm:'黏土定格',   sub:'手作質感',   p:'restyle this photo as a stop-motion claymation scene, soft clay texture with visible fingerprints, warm handcrafted lighting, miniature set aesthetic' },
+  { id:'vapor',  nm:'蒸氣波',     sub:'霓虹未來感', p:'restyle this photo in a retro synthwave / vaporwave aesthetic, neon pink and cyan color grading, glowing grid horizon, 1980s retro-futuristic atmosphere' }
+];
+
+let selPose = '', selPhotoStyle = '';
+const retouchBtn   = document.getElementById('retouchBtn');
+const retouchLabel = document.getElementById('retouchBtnLabel');
+const consentChk   = document.getElementById('consentChk');
+const consentRow   = document.getElementById('consentRow');
+const retouchErr   = document.getElementById('retouchErr');
+const retouchProg  = document.getElementById('retouchProgress');
+const retouchMsg   = document.getElementById('retouchMsg');
+
+function buildChips(host, items, getSel, setSel){
+  items.forEach(it => {
+    const b = document.createElement('button');
+    b.type = 'button';
+    b.className = 'style-chip';
+    b.dataset.id = it.id;
+    b.setAttribute('aria-pressed', String(it.id === getSel()));
+    b.innerHTML = `${it.nm}<small>${it.sub}</small>`;
+    b.addEventListener('click', () => {
+      setSel(it.id);
+      host.querySelectorAll('.style-chip').forEach(x => x.setAttribute('aria-pressed', String(x.dataset.id === getSel())));
+      refreshRetouchBtn();
+    });
+    host.appendChild(b);
+  });
+}
+buildChips(document.getElementById('poseGrid'), POSES, () => selPose, v => { selPose = v; });
+buildChips(document.getElementById('photoStyleGrid'), PHOTO_STYLES, () => selPhotoStyle, v => { selPhotoStyle = v; });
+
+function refreshRetouchBtn(){
+  const chosen = !!(selPose || selPhotoStyle);
+  const agreed = consentChk.checked;
+  consentRow.classList.toggle('agreed', agreed);
+  retouchBtn.disabled = !(chosen && agreed);
+  retouchLabel.textContent = !chosen ? '請先選擇姿勢或畫風'
+                           : !agreed ? '請先勾選上方同意事項'
+                           : '套用 AI 改圖';
+}
+consentChk.addEventListener('change', refreshRetouchBtn);
+refreshRetouchBtn();
+
+document.getElementById('gotoKey').addEventListener('click', e => {
+  e.preventDefault();
+  switchTab('ai');
+  const box = document.getElementById('keyBox');
+  box.open = true;
+  setTimeout(() => box.scrollIntoView({ behavior:'smooth', block:'center' }), 60);
+});
+
+document.getElementById('btnRevert').addEventListener('click', () => {
+  if (!originalImg) return;
+  loadIntoStage(originalImg, originalName, 'cover', true);
+  document.getElementById('revertRow').hidden = true;
+});
+
+retouchBtn.addEventListener('click', async () => {
+  if (!srcImg) return;
+  retouchErr.hidden = true;
+  retouchBtn.disabled = true;
+  retouchProg.hidden = false;
+  try {
+    retouchMsg.textContent = '正在解開金鑰…';
+    const apiKey = await resolveApiKey();
+
+    retouchMsg.textContent = '正在讀取照片…';
+    const base = originalImg || srcImg;                 // 一律從原始照片出發，避免反覆重繪劣化
+    const dataUrl = await imgToDataURL(base);
+    const ratio = closestRatio(base.naturalWidth / base.naturalHeight);
+
+    const parts = [];
+    const st = PHOTO_STYLES.find(s => s.id === selPhotoStyle);
+    parts.push(st && st.p ? st.p : 'keep this as a natural, realistic photograph and do not change its art style');
+    const po = POSES.find(p => p.id === selPose);
+    if (po && po.p) parts.push(`Adjust everyone's pose to: ${po.p}`);
+    parts.push(PRESERVE);
+
+    retouchMsg.textContent = '正在改圖… 約需 10–40 秒';
+    const out = await callAgnes(apiKey, parts.join('. ') + '.', ratio, dataUrl);
+
+    retouchMsg.textContent = '正在載入結果…';
+    const img = await loadImage(out);
+    loadIntoStage(img, originalName + '_ai', 'cover', true);
+    document.getElementById('revertRow').hidden = false;
+    document.getElementById('stage').scrollIntoView({ behavior:'smooth', block:'center' });
+  } catch (e){
+    console.error(e);
+    document.getElementById('retouchErrMsg').textContent = 'AI 改圖失敗：' + (e.message || e);
+    retouchErr.hidden = false;
+  } finally {
+    retouchProg.hidden = true;
+    refreshRetouchBtn();
+  }
+});
+
+/* ============================================================
    6. 內建金鑰（AES-256-GCM + PBKDF2 + 網域綁定）
    ============================================================ */
 const FRAG_C = 'Ld7q';                          // ← 金鑰片段 3/3
@@ -1087,7 +1278,9 @@ function buildPrompt(userText){
   parts.push('ultra-wide panoramic banner composition, full-bleed edge to edge, balanced horizontal layout with the main subject comfortably inside the frame, no text, no lettering, no watermark, no logo, no border, no frame, high detail, print quality');
   return parts.filter(Boolean).join('. ');
 }
-async function callAgnes(apiKey, prompt, ratio){
+async function callAgnes(apiKey, prompt, ratio, imageDataUrl){
+  const extra = { response_format: 'b64_json' };
+  if (imageDataUrl) extra.image = [imageDataUrl];      // 有來源圖 = 圖生圖
   const res = await fetch(AGNES_ENDPOINT, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + apiKey },
@@ -1096,7 +1289,7 @@ async function callAgnes(apiKey, prompt, ratio){
       prompt,
       size: '2K',
       ratio,
-      extra_body: { response_format: 'b64_json' }
+      extra_body: extra
     })
   });
   if (!res.ok){
