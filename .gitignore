@@ -1,0 +1,17 @@
+# OS
+Thumbs.db
+desktop.ini
+.DS_Store
+
+# 編輯器
+.vscode/
+.idea/
+
+# 本機工具設定（不需要進版控）
+.claude/
+
+# 絕對不要提交任何明文金鑰
+*.key
+.env
+.env.*
+secrets.*
