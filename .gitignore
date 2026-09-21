@@ -15,3 +15,6 @@ desktop.ini
 .env
 .env.*
 secrets.*
+
+# 測試用暫存圖，不進版控
+_test/

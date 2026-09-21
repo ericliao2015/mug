@@ -762,6 +762,9 @@ function render(){
   if (!srcImg) return;
   clampView();
   const k = stageScale();
+  // 舞台還沒進入版面（卡片仍隱藏、或分頁未顯示）時量不到寬度，
+  // 此時畫出去會變成 scale(0) 的空白畫面。交給 ResizeObserver 在有尺寸後補畫。
+  if (!k) return;
   subject.style.width  = srcImg.naturalWidth + 'px';
   subject.style.height = srcImg.naturalHeight + 'px';
   subject.style.marginLeft = (-srcImg.naturalWidth / 2) + 'px';
@@ -808,13 +811,13 @@ function loadIntoStage(img, name, mode, keepOriginal){
   subject.src = img.src;
   srcDims.textContent = img.naturalWidth + ' × ' + img.naturalHeight + ' px';
   view.rot = 0;
-  minScale = containScale() * 0.25;
-  maxScale = coverScale() * 10;
-  fit(mode || 'cover');
+  // 必須先讓卡片進入版面，stage 才量得到寬度；否則 fit() 會以 k=0 收場
   uploadCard.hidden = true;
   workCard.hidden = false;
   document.getElementById('retouchCard').hidden = false;
   exportCard.hidden = false;
+  recalcLimits();
+  fit(mode || 'cover');
   document.getElementById('verifyBox').hidden = true;
   stageHint.style.opacity = '1';
   clearTimeout(loadIntoStage._t);
@@ -960,7 +963,12 @@ document.getElementById('guideToggle').addEventListener('change', e => {
   stage.classList.toggle('show-guides', e.target.checked);
 });
 stage.classList.add('show-guides');
-window.addEventListener('resize', () => render());
+// 舞台尺寸變化（視窗縮放、轉向、卡片由隱藏變可見、分頁切換）都要重畫
+if (window.ResizeObserver){
+  new ResizeObserver(() => render()).observe(stage);
+} else {
+  window.addEventListener('resize', () => render());
+}
 
 /* ---- 匯出 ---- */
 function showCropErr(m){ document.getElementById('cropErrMsg').textContent = m; document.getElementById('cropErr').hidden = false; }
@@ -1005,7 +1013,15 @@ document.getElementById('cropBtn').addEventListener('click', async () => {
 /* ============================================================
    5b. AI 改圖（姿勢 / 畫風）—— 圖生圖，結果送回舞台
    ============================================================ */
-const PRESERVE = 'keep every person\'s face, identity and facial features unchanged, keep their clothing exactly as in the original photo, keep the original background and setting, keep natural body proportions, do not stretch, elongate, squeeze or distort anyone, keep them sharp and in focus';
+/* 提示詞拆成可組合的片段。
+   只改姿勢時用強保留（連背景、服裝都鎖住）；
+   一旦選了畫風，就改成「全圖含背景一起套用該畫風」，否則人物變卡通、
+   背景卻留實拍，同一張圖會出現兩種畫風。 */
+const IDENTITY = 'keep every person\'s face, identity and facial features clearly recognisable, keep the same number of people, keep natural body proportions, do not stretch, elongate, squeeze or distort anyone';
+const KEEP_CLOTHES = 'keep their clothing exactly as in the original photo';
+const KEEP_SCENE = 'keep the original background and setting';
+const STYLE_WHOLE = 'apply this style consistently across the entire image including the background, so the people and the scene share one single coherent look with no photographic leftovers';
+const NO_TEXT = 'no text, no lettering, no captions, no subtitles, no credits, no watermark, no logo, no signature, no border, no frame';
 
 const POSES = [
   { id:'',       nm:'維持原姿勢', sub:'不調整',     p:'' },
@@ -1015,17 +1031,16 @@ const POSES = [
   { id:'thumb',  nm:'比讚手勢',   sub:'陽光正向',   p:'everyone giving a thumbs up with a cheerful expression' },
   { id:'arm',    nm:'勾肩搭背',   sub:'團隊感',     p:'everyone standing arm in arm like close friends, warm genuine smiles' }
 ];
+/* keepClothes:false = 這個畫風本來就要換掉服裝，不套用服裝鎖定 */
 const PHOTO_STYLES = [
-  { id:'',       nm:'不改變畫風', sub:'維持原樣',   p:'' },
-  { id:'real',   nm:'原始真人風格', sub:'真實照片質感', p:'keep this as a natural, realistic photograph, do not stylize into a cartoon, anime or illustration, preserve authentic photographic detail, natural skin texture and realistic lighting' },
-  { id:'ghibli', nm:'吉卜力風',   sub:'手繪水彩感', p:'redraw this photo in the style of a Studio Ghibli / Hayao Miyazaki animated film, soft painterly backgrounds, warm nostalgic color palette, gentle hand-drawn line art' },
-  { id:'pixar',  nm:'迪士尼皮克斯', sub:'3D 動畫質感', p:'redraw this photo in the style of a modern Disney/Pixar 3D animated movie, expressive eyes, smooth stylized 3D character shading, vibrant colorful lighting' },
-  { id:'kdrama', nm:'韓劇質感',   sub:'柔光唯美',   p:'restyle this photo like a cinematic Korean drama promotional still, soft glowing skin tones, warm backlight, dreamy bokeh background, pastel color grading' },
-  { id:'hk',     nm:'復古港片',   sub:'霓虹懷舊',   p:'restyle this photo like a 1990s Hong Kong film poster, moody neon-lit night atmosphere, grainy film texture, bold dramatic lighting, retro color grading' },
-  { id:'ink',    nm:'中國水墨',   sub:'寫意筆觸',   p:'redraw this photo in traditional Chinese ink wash painting style, expressive brush strokes, monochrome ink tones with subtle color wash, rice-paper texture' },
-  { id:'lego',   nm:'樂高公仔',   sub:'玩具感',     p:'reimagine everyone in this photo as LEGO minifigure style characters, glossy plastic texture, blocky simplified shapes, bright toy-like colors' },
-  { id:'clay',   nm:'黏土定格',   sub:'手作質感',   p:'restyle this photo as a stop-motion claymation scene, soft clay texture with visible fingerprints, warm handcrafted lighting, miniature set aesthetic' },
-  { id:'vapor',  nm:'蒸氣波',     sub:'霓虹未來感', p:'restyle this photo in a retro synthwave / vaporwave aesthetic, neon pink and cyan color grading, glowing grid horizon, 1980s retro-futuristic atmosphere' }
+  { id:'',        nm:'不改變畫風',   sub:'維持原樣',   p:'' },
+  { id:'ghibli',  nm:'吉卜力風',     sub:'手繪水彩感', p:'redraw this photo in the style of a Studio Ghibli / Hayao Miyazaki animated film, soft painterly backgrounds, warm nostalgic color palette, gentle hand-drawn line art' },
+  { id:'pixar',   nm:'迪士尼皮克斯', sub:'3D 動畫質感', p:'redraw this photo in the style of a modern Disney/Pixar 3D animated movie, expressive eyes, smooth stylized 3D character shading, vibrant colorful lighting' },
+  { id:'kdrama',  nm:'韓劇質感',     sub:'柔光唯美',   p:'restyle this photo like a cinematic Korean drama promotional still, soft glowing skin tones, warm backlight, dreamy bokeh background, pastel color grading' },
+  { id:'retro80', nm:'80年代復古',   sub:'台灣懷舊',   keepClothes:false,
+    p:'restyle this photo as an authentic 1980s Taiwanese family snapshot. Dress everyone in period-correct 1980s Taiwan fashion — high-waisted trousers, wide pointed shirt collars, knitted vests and tank tops, boxy blazers with shoulder pads, plaid or small floral prints, simple denim. Give them era hairstyles: tightly permed curls and voluminous waves, feathered side partings, thick blunt fringes. Critically, the result must look like a genuinely old photograph rather than a modern photo with a retro filter: a forty-year-old colour print on faded photographic paper, heavily shifted toward warm amber and magenta with sickly yellow-green shadows, washed-out milky blacks and flat low contrast, noticeably soft and unsharp with none of the clarity of a modern lens, coarse visible film grain throughout, blown-out highlights from a harsh direct on-camera flash, heavy corner vignetting, faint dust specks, hairline scratches and emulsion wear across the surface' },
+  { id:'lego',    nm:'樂高公仔',     sub:'玩具感',     p:'reimagine this entire scene as a LEGO build — everyone becomes a LEGO minifigure with glossy plastic texture and blocky simplified shapes, and the surroundings are rebuilt from LEGO bricks too, bright toy-like colors, studio product photography lighting' },
+  { id:'vapor',   nm:'蒸氣波',       sub:'霓虹未來感', p:'restyle this photo in a retro synthwave / vaporwave aesthetic, neon pink and cyan color grading, glowing grid horizon, 1980s retro-futuristic atmosphere' }
 ];
 
 let selPose = '', selPhotoStyle = '';
@@ -1096,12 +1111,18 @@ retouchBtn.addEventListener('click', async () => {
     const dataUrl = await imgToDataURL(base);
     const ratio = closestRatio(base.naturalWidth / base.naturalHeight);
 
-    const parts = [];
     const st = PHOTO_STYLES.find(s => s.id === selPhotoStyle);
-    parts.push(st && st.p ? st.p : 'keep this as a natural, realistic photograph and do not change its art style');
     const po = POSES.find(p => p.id === selPose);
+    const parts = [];
+    if (st && st.p){
+      parts.push(st.p, STYLE_WHOLE);                 // 畫風模式：全圖統一轉換
+    } else {
+      parts.push('keep this as a natural, realistic photograph and do not change its art style', KEEP_SCENE);
+    }
     if (po && po.p) parts.push(`Adjust everyone's pose to: ${po.p}`);
-    parts.push(PRESERVE);
+    parts.push(IDENTITY);
+    if (!st || st.keepClothes !== false) parts.push(KEEP_CLOTHES);
+    parts.push(NO_TEXT);
 
     retouchMsg.textContent = '正在改圖… 約需 10–40 秒';
     const out = await callAgnes(apiKey, parts.join('. ') + '.', ratio, dataUrl);
