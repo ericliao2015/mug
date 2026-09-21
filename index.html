@@ -120,6 +120,15 @@ body{
   background:var(--surface-3); color:var(--muted);
 }
 .card .desc{color:var(--muted); font-size:13px; margin:0 0 16px; line-height:1.65;}
+.optbox{
+  margin:16px 0; padding:12px 14px; border-radius:var(--radius-sm);
+  background:var(--surface-2); border:1px solid var(--line); transition:.15s;
+}
+.optbox .switch-row{font-size:13px; align-items:flex-start; font-weight:500;}
+.optbox .switch-row input{margin-top:2px;}
+.optbox .hint{font-size:12px; color:var(--muted); margin:7px 0 0 25px; line-height:1.65;}
+.optbox.on{background:var(--accent-soft); border-color:color-mix(in srgb,var(--accent) 40%,transparent);}
+.optbox.on .switch-row{color:var(--accent);}
 .consent{
   margin-top:16px; padding:12px 14px; border-radius:var(--radius-sm);
   background:var(--warn-soft); border:1px solid color-mix(in srgb,var(--warn) 42%,transparent);
@@ -420,7 +429,7 @@ footer a:hover{text-decoration:underline;}
 
       <div class="alert warn" id="blankAlert" hidden>
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M10.3 3.9L1.8 18a2 2 0 001.7 3h17a2 2 0 001.7-3L13.7 3.9a2 2 0 00-3.4 0z"/><path d="M12 9v4M12 17h.01"/></svg>
-        <div><b>目前框內有空白區域。</b>下載時空白處會填成白色。若不想留白，請按「填滿裁切框」。</div>
+        <div id="blankAlertMsg"><b>目前框內有空白區域。</b>下載時空白處會填成白色。若不想留白，請按「填滿裁切框」。</div>
       </div>
       <div class="alert warn" id="dpiAlert" hidden>
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><path d="M12 8v5M12 16h.01"/></svg>
@@ -437,6 +446,13 @@ footer a:hover{text-decoration:underline;}
 
       <label class="ctrl-label">畫風</label>
       <div class="style-grid" id="photoStyleGrid"></div>
+
+      <div class="optbox" id="mugBoxCrop">
+        <label class="switch-row">
+          <input type="checkbox" id="mugEdgeCrop"> 邊緣淡出白底（馬克杯適用）
+        </label>
+        <p class="hint">要求 AI 把四周柔和淡入純白，讓畫面融進馬克杯的白色杯身，而不是留下一條硬邊。勾選後改圖結果會以「完整顯示」載入舞台，避免裁切框把淡出的邊緣切掉。</p>
+      </div>
 
       <div class="consent" id="consentRow">
         <label class="switch-row" style="align-items:flex-start;">
@@ -516,6 +532,12 @@ footer a:hover{text-decoration:underline;}
 
     <div class="card">
       <h2><span class="num">4</span>產生圖片</h2>
+      <div class="optbox" id="mugBoxGen">
+        <label class="switch-row">
+          <input type="checkbox" id="mugEdgeGen"> 邊緣淡出白底（馬克杯適用）
+        </label>
+        <p class="hint">要求 AI 把四周柔和淡入純白，讓畫面融進馬克杯的白色杯身。勾選後會取消「滿版出血」指令（兩者互斥），並改用完整置入而非裁切填滿，以免淡出的邊緣被切掉。</p>
+      </div>
       <button class="btn-primary" id="genBtn">
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3l1.9 4.6L18.5 9.5l-4.6 1.9L12 16l-1.9-4.6L5.5 9.5l4.6-1.9L12 3z"/><path d="M19 15l.8 2 2 .8-2 .8-.8 2-.8-2-2-.8 2-.8.8-2z"/></svg>
         開始生成
@@ -735,7 +757,12 @@ const zoomVal   = document.getElementById('zoomVal');
 const srcDims   = document.getElementById('srcDims');
 const effDpi    = document.getElementById('effDpi');
 const blankAlert= document.getElementById('blankAlert');
+const blankAlertMsg = document.getElementById('blankAlertMsg');
 const dpiAlert  = document.getElementById('dpiAlert');
+const mugEdgeCrop = document.getElementById('mugEdgeCrop');
+const mugEdgeGen  = document.getElementById('mugEdgeGen');
+/* 淡出白邊時用 contain 載入，否則裁切框會把羽化的邊緣切掉 */
+function fitMode(){ return mugEdgeCrop.checked ? 'contain' : 'cover'; }
 
 const FRAG_B = 'pR2m';                          // ← 金鑰片段 2/3
 
@@ -796,6 +823,12 @@ function render(){
   const y0 = OUT_H/2 + view.cy - h/2, y1 = y0 + h;
   const covered = x0 <= 0.5 && y0 <= 0.5 && x1 >= OUT_W - 0.5 && y1 >= OUT_H - 0.5;
   blankAlert.hidden = covered;
+  if (!covered){
+    // 做馬克杯白邊時，留白是刻意的，不該叫使用者去按「填滿裁切框」
+    blankAlertMsg.innerHTML = mugEdgeCrop.checked
+      ? '<b>框內有留白，這在馬克杯白邊模式下是正常的。</b>空白處會填成純白，與淡出的邊緣相接。'
+      : '<b>目前框內有空白區域。</b>下載時空白處會填成白色。若不想留白，請按「填滿裁切框」。';
+  }
 
   // 取樣解析度
   const dpi = DPI / view.scale;
@@ -1045,6 +1078,11 @@ const KEEP_SCENE = 'keep the original background and setting';
 const STYLE_WHOLE = 'apply this style consistently across the entire image including the background, so the people and the scene share one single coherent look with no photographic leftovers';
 const NO_TEXT = 'no text, no lettering, no captions, no subtitles, no credits, no watermark, no logo, no signature, no border, no frame';
 
+/* 馬克杯白邊融合。生圖端另需一句構圖指令，且必須取消尾巴的 full-bleed，
+   兩者是直接相反的要求。 */
+const MUG_EDGE = 'Softly feather the outer edges of the artwork into pure white (#FFFFFF) with a broad, gradual, seamless fade on all four sides, so the picture melts into a plain white background. Keep the artwork rectangular — no circular or oval crop, no radial fade, no vignette, no halo, no darkened edges, no visible border and no hard cut line. Produce flat artwork only, never a mug mockup or product photo';
+const MUG_EDGE_GEN = 'Wide horizontal panoramic composition intended for mug printing: keep the main subject centred and extend the scene naturally to both sides';
+
 const POSES = [
   { id:'',       nm:'維持原姿勢', sub:'不調整',     p:'' },
   { id:'smile',  nm:'自然站姿微笑', sub:'正面看鏡頭', p:'everyone standing naturally and smiling warmly at the camera' },
@@ -1193,6 +1231,13 @@ document.getElementById('gotoKey').addEventListener('click', e => {
   setTimeout(() => box.scrollIntoView({ behavior:'smooth', block:'center' }), 60);
 });
 
+[[mugEdgeCrop, 'mugBoxCrop'], [mugEdgeGen, 'mugBoxGen']].forEach(([chk, boxId]) => {
+  const box = document.getElementById(boxId);
+  const sync = () => box.classList.toggle('on', chk.checked);
+  chk.addEventListener('change', sync);
+  sync();
+});
+
 const ageRow = document.getElementById('ageRow');
 const ageSlider = document.getElementById('ageSlider');
 const ageVal = document.getElementById('ageVal');
@@ -1251,6 +1296,7 @@ retouchBtn.addEventListener('click', async () => {
     parts.push(po && po.p ? `Adjust everyone's pose to: ${po.p}, keeping their faces and identities unchanged` : KEEP_POSE);
     parts.push(lockClause(!!(st && st.looseId)));
     if (!st || st.keepClothes !== false) parts.push(KEEP_CLOTHES);
+    if (mugEdgeCrop.checked) parts.push(MUG_EDGE);
     parts.push(NO_TEXT);
 
     retouchMsg.textContent = '正在改圖… 約需 10–40 秒';
@@ -1262,12 +1308,12 @@ retouchBtn.addEventListener('click', async () => {
       retouchMsg.textContent = '正在套用相紙老化…';
       retouchRaw = img;
       ageVal.textContent = ageSlider.value + '%';
-      loadIntoStage(await ageToImage(img, Number(ageSlider.value) / 100), originalName + '_ai', 'cover', true);
+      loadIntoStage(await ageToImage(img, Number(ageSlider.value) / 100), originalName + '_ai', fitMode(), true);
       ageRow.hidden = false;
     } else {
       retouchRaw = null;
       ageRow.hidden = true;
-      loadIntoStage(img, originalName + '_ai', 'cover', true);
+      loadIntoStage(img, originalName + '_ai', fitMode(), true);
     }
     document.getElementById('revertRow').hidden = false;
     document.getElementById('stage').scrollIntoView({ behavior:'smooth', block:'center' });
@@ -1435,7 +1481,13 @@ function buildPrompt(userText){
   const style = STYLES.find(s => s.id === selStyle);
   const parts = [userText.trim()];
   if (style && style.p) parts.push(style.p);
-  parts.push('ultra-wide panoramic banner composition, full-bleed edge to edge, balanced horizontal layout with the main subject comfortably inside the frame, no text, no lettering, no watermark, no logo, no border, no frame, high detail, print quality');
+  if (mugEdgeGen.checked){
+    // full-bleed 與「淡出白邊」是相反要求，勾選時必須整句換掉而不是疊加
+    parts.push(MUG_EDGE_GEN, MUG_EDGE,
+      'balanced horizontal layout with the main subject comfortably inside the frame, no text, no lettering, no watermark, no logo, high detail, print quality');
+  } else {
+    parts.push('ultra-wide panoramic banner composition, full-bleed edge to edge, balanced horizontal layout with the main subject comfortably inside the frame, no text, no lettering, no watermark, no logo, no border, no frame, high detail, print quality');
+  }
   return parts.filter(Boolean).join('. ');
 }
 async function callAgnes(apiKey, prompt, ratio, imageDataUrl){
@@ -1475,7 +1527,9 @@ function composeBanner(img, heightCm){
   ctx.imageSmoothingQuality = 'high';
   ctx.fillStyle = '#ffffff';
   ctx.fillRect(0, 0, OUT_W, OUT_H);
-  const s = Math.max(OUT_W / img.naturalWidth, bandH / img.naturalHeight); // cover 該色帶
+  // 淡出白邊時改用 contain：cover 會把左右各切掉近百像素，正好吃掉羽化的邊緣
+  const fit = mugEdgeGen.checked ? Math.min : Math.max;
+  const s = fit(OUT_W / img.naturalWidth, bandH / img.naturalHeight);
   const w = img.naturalWidth * s, h = img.naturalHeight * s;
   const top = Math.round((OUT_H - bandH) / 2);
   ctx.save();
