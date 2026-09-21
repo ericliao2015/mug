@@ -18,3 +18,6 @@ secrets.*
 
 # 測試用暫存圖，不進版控
 _test/
+
+# \u6E2C\u8A66\u8F38\u51FA\uFF0C\u4E0D\u9032\u7248\u63A7
+test-results/
