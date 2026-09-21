@@ -1065,10 +1065,15 @@ document.getElementById('cropBtn').addEventListener('click', async () => {
    若鎖裡先寫「保持姿勢」，後面又要求改姿勢，同一段提示詞就自相矛盾。 */
 const ID_STRICT = 'maintain their facial identity, approximate age, hairstyle and body proportions';
 const ID_LOOSE  = 'preserve their identity cues — hairstyle shape, clothing colours and patterns — without requiring photographic facial likeness';
-function lockClause(loose){
+/* relaxFraming：做白邊淡出時必須放寬構圖鎖。原本那句「保留原始取景與構圖」
+   等於命令模型不准動畫面，而淡出白邊本質上就是要把內容往內收，兩者直接打架。 */
+function lockClause(loose, relaxFraming){
   return 'Use the provided image as the strict visual reference. Preserve the exact number of people and keep each person individually recognisable: '
     + (loose ? ID_LOOSE : ID_STRICT)
-    + ', and their relative position and interaction with others. Preserve the original camera viewpoint, framing, perspective, spatial layout and overall composition. '
+    + ', and their relative position and interaction with others. '
+    + (relaxFraming
+        ? 'Keep the same camera viewpoint and the same arrangement of the subjects, but you may pull the scene slightly inward from the borders to leave room for the white fade. '
+        : 'Preserve the original camera viewpoint, framing, perspective, spatial layout and overall composition. ')
     + 'Do not add, remove, duplicate, merge, swap or replace people. Do not change a person\'s gender presentation or substantially alter their age. '
     + 'Do not invent additional limbs, fingers, faces or background people';
 }
@@ -1080,7 +1085,11 @@ const NO_TEXT = 'no text, no lettering, no captions, no subtitles, no credits, n
 
 /* 馬克杯白邊融合。生圖端另需一句構圖指令，且必須取消尾巴的 full-bleed，
    兩者是直接相反的要求。 */
-const MUG_EDGE = 'Softly feather the outer edges of the artwork into pure white (#FFFFFF) with a broad, gradual, seamless fade on all four sides, so the picture melts into a plain white background. Keep the artwork rectangular — no circular or oval crop, no radial fade, no vignette, no halo, no darkened edges, no visible border and no hard cut line. Produce flat artwork only, never a mug mockup or product photo';
+const MUG_EDGE_TAIL = 'Keep the artwork rectangular — no circular or oval crop, no radial fade, no vignette, no halo, no darkened edges, no visible border and no hard cut line. Produce flat artwork only, never a mug mockup or product photo';
+const MUG_EDGE = 'Softly feather the outer edges of the artwork into pure white (#FFFFFF) with a broad, gradual, seamless fade on all four sides, so the picture melts into a plain white background. ' + MUG_EDGE_TAIL;
+/* 圖生圖版：實測只有左右緣會淡出，上下緣被原照片內容釘死，所以逐邊點名、
+   給出明確的比例，並說明這道處理的優先序高於保留取景。 */
+const MUG_EDGE_I2I = 'The picture must dissolve gradually into pure white (#FFFFFF) toward every outer border. Do NOT add a white margin, a white band, a white frame or any uniform strip of white around the picture — there must be no boundary line anywhere. The whitening has to be one smooth continuous gradient: roughly 20% in from each side the image starts to lighten, at about 8% in it is heavily washed out yet its content is still faintly visible, and only at the very outermost pixels does it reach pure white. Apply this identically on the top, the bottom, the left and the right. Think of watercolour paint thinning out into bare white paper. This edge treatment takes priority over reproducing the original framing. ' + MUG_EDGE_TAIL;
 const MUG_EDGE_GEN = 'Wide horizontal panoramic composition intended for mug printing: keep the main subject centred and extend the scene naturally to both sides';
 
 const POSES = [
@@ -1294,9 +1303,9 @@ retouchBtn.addEventListener('click', async () => {
     }
     // 姿勢與「鎖住姿勢」互斥，二選一，避免同一段提示詞自相矛盾
     parts.push(po && po.p ? `Adjust everyone's pose to: ${po.p}, keeping their faces and identities unchanged` : KEEP_POSE);
-    parts.push(lockClause(!!(st && st.looseId)));
+    parts.push(lockClause(!!(st && st.looseId), mugEdgeCrop.checked));
     if (!st || st.keepClothes !== false) parts.push(KEEP_CLOTHES);
-    if (mugEdgeCrop.checked) parts.push(MUG_EDGE);
+    if (mugEdgeCrop.checked) parts.push(MUG_EDGE_I2I);
     parts.push(NO_TEXT);
 
     retouchMsg.textContent = '正在改圖… 約需 10–40 秒';
