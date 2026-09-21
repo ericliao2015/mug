@@ -1028,7 +1028,18 @@ document.getElementById('cropBtn').addEventListener('click', async () => {
    只改姿勢時用強保留（連背景、服裝都鎖住）；
    一旦選了畫風，就改成「全圖含背景一起套用該畫風」，否則人物變卡通、
    背景卻留實拍，同一張圖會出現兩種畫風。 */
-const IDENTITY = 'keep every person\'s face, identity and facial features clearly recognisable, keep the same number of people, keep natural body proportions, do not stretch, elongate, squeeze or distort anyone';
+/* 身分與構圖鎖。姿勢刻意不寫死在這裡 —— 畫風可以跟姿勢調整疊加，
+   若鎖裡先寫「保持姿勢」，後面又要求改姿勢，同一段提示詞就自相矛盾。 */
+const ID_STRICT = 'maintain their facial identity, approximate age, hairstyle and body proportions';
+const ID_LOOSE  = 'preserve their identity cues — hairstyle shape, clothing colours and patterns — without requiring photographic facial likeness';
+function lockClause(loose){
+  return 'Use the provided image as the strict visual reference. Preserve the exact number of people and keep each person individually recognisable: '
+    + (loose ? ID_LOOSE : ID_STRICT)
+    + ', and their relative position and interaction with others. Preserve the original camera viewpoint, framing, perspective, spatial layout and overall composition. '
+    + 'Do not add, remove, duplicate, merge, swap or replace people. Do not change a person\'s gender presentation or substantially alter their age. '
+    + 'Do not invent additional limbs, fingers, faces or background people';
+}
+const KEEP_POSE = 'Preserve everyone\'s pose, gestures and expression exactly as in the original photograph';
 const KEEP_CLOTHES = 'keep their clothing exactly as in the original photo';
 const KEEP_SCENE = 'keep the original background and setting';
 const STYLE_WHOLE = 'apply this style consistently across the entire image including the background, so the people and the scene share one single coherent look with no photographic leftovers';
@@ -1042,18 +1053,29 @@ const POSES = [
   { id:'thumb',  nm:'比讚手勢',   sub:'陽光正向',   p:'everyone giving a thumbs up with a cheerful expression' },
   { id:'arm',    nm:'勾肩搭背',   sub:'團隊感',     p:'everyone standing arm in arm like close friends, warm genuine smiles' }
 ];
-/* keepClothes:false = 這個畫風本來就要換掉服裝，不套用服裝鎖定 */
+/* keepClothes:false = 這個畫風本來就要換掉服裝，不套用服裝鎖定
+   looseId:true     = 這個畫風做不到照片級臉部相似，改用寬鬆的身分線索
+   aged:true        = 回來後再走本機老化 */
 const PHOTO_STYLES = [
-  { id:'',        nm:'不改變畫風',   sub:'維持原樣',   p:'' },
-  { id:'ghibli',  nm:'吉卜力風',     sub:'手繪水彩感', p:'redraw this photo in the style of a Studio Ghibli / Hayao Miyazaki animated film, soft painterly backgrounds, warm nostalgic color palette, gentle hand-drawn line art' },
-  { id:'pixar',   nm:'迪士尼皮克斯', sub:'3D 動畫質感', p:'redraw this photo in the style of a modern Disney/Pixar 3D animated movie, expressive eyes, smooth stylized 3D character shading, vibrant colorful lighting' },
-  { id:'kdrama',  nm:'韓劇質感',     sub:'柔光唯美',   p:'restyle this photo like a cinematic Korean drama promotional still, soft glowing skin tones, warm backlight, dreamy bokeh background, pastel color grading' },
-  /* aged:true = 回來後再走本機老化。模型抗拒大幅劣化，所以提示詞只負責
-     服裝、髮型與整體年代感，相紙褪色交給 agePhoto() 處理。 */
-  { id:'retro80', nm:'80年代復古',   sub:'台灣懷舊',   keepClothes:false, aged:true,
-    p:'restyle this photo as an authentic 1980s Taiwanese family snapshot. Dress everyone in period-correct 1980s Taiwan fashion — high-waisted trousers, wide pointed shirt collars, knitted vests and tank tops, boxy blazers with shoulder pads, plaid or small floral prints, simple denim. Give them era hairstyles: tightly permed curls and voluminous waves, feathered side partings, thick blunt fringes. Light it like a 1980s consumer film camera: warm slightly faded colour, soft imprecise focus and gentle halation, with the plain everyday framing of a family photo rather than a modern studio portrait' },
-  { id:'lego',    nm:'樂高公仔',     sub:'玩具感',     p:'reimagine this entire scene as a LEGO build — everyone becomes a LEGO minifigure with glossy plastic texture and blocky simplified shapes, and the surroundings are rebuilt from LEGO bricks too, bright toy-like colors, studio product photography lighting' },
-  { id:'vapor',   nm:'蒸氣波',       sub:'霓虹未來感', p:'restyle this photo in a retro synthwave / vaporwave aesthetic, neon pink and cyan color grading, glowing grid horizon, 1980s retro-futuristic atmosphere' }
+  { id:'', nm:'不改變畫風', sub:'維持原樣', p:'' },
+
+  { id:'ghibli', nm:'吉卜力風', sub:'手繪水彩感',
+    p:'Transform this photograph into a warm, hand-painted Japanese animated-film aesthetic inspired by classic Studio Ghibli and Hayao Miyazaki films: delicate hand-drawn linework, softly simplified facial features, expressive but natural eyes, subtle watercolour and gouache-like textures, lush painterly backgrounds, gentle natural lighting and a warm nostalgic colour palette. Avoid exaggerated anime proportions, oversized eyes, chibi features or glossy digital anime rendering' },
+
+  { id:'pixar', nm:'迪士尼皮克斯', sub:'3D 動畫質感',
+    p:'Transform this photograph into a polished modern Disney/Pixar-style 3D animated feature film scene: each person becomes a stylised 3D character with expressive eyes, appealing but recognisable facial proportions, smooth stylised skin, softly sculpted hair, detailed fabric materials and cinematic character shading, lit with vibrant harmonious colours, soft global illumination and subtle rim lighting. Keep each character appealing without excessively enlarging the eyes and without making everyone converge on the same generic face' },
+
+  { id:'kdrama', nm:'韓劇質感', sub:'柔光唯美',
+    p:'Restyle this photograph as a premium cinematic Korean drama promotional still while keeping it fully photorealistic: soft natural skin tones, subtle flattering key light, warm backlighting, shallow depth of field, creamy dreamy bokeh and refined pastel colour grading, with slightly lifted shadows, controlled highlights and real visible skin texture, as though shot on a high-end cinema camera. Avoid plastic-looking skin, excessive beauty filtering, facial reshaping, heavy makeup or artificial HDR' },
+
+  { id:'retro80', nm:'80年代復古', sub:'台灣懷舊', keepClothes:false, aged:true,
+    p:'Transform this photograph into an authentic Taiwanese family snapshot taken in the 1980s. Restyle their clothing with historically plausible everyday 1980s Taiwan fashion: high-waisted trousers, wide or pointed shirt collars, tucked-in shirts, knitted vests and tank tops, boxy blazers with shoulder pads, plaid patterns, small floral prints, simple denim, modest dresses. Give them believable period hairstyles appropriate to their age and gender: tight perms, voluminous waves, feathered side-parted hair, short practical men\'s cuts, thick blunt fringes, naturally styled dark hair. Keep the framing casual and ordinary, like a real family album photograph rather than a contemporary fashion shoot or an intentionally styled retro portrait. This is Taiwan in the 1980s, not 1980s America. Avoid modern clothing, contemporary hairstyles and modern cinematic colour grading' },
+
+  { id:'lego', nm:'樂高公仔', sub:'玩具感', looseId:true,
+    p:'Reimagine the entire photograph as a highly detailed LEGO brick-built scene. Every person becomes a LEGO minifigure with authentic proportions: cylindrical head, C-shaped hands, block-shaped torso and legs, simple printed facial features and a moulded plastic hair piece. Rebuild the entire environment from LEGO elements as well — architecture, vegetation, furniture, ground surfaces and background details. Use glossy ABS plastic materials, visible brick seams and studs, and premium LEGO product photography lighting. The result should look like a real photographed physical LEGO diorama, not a cartoon or a generic block-style render. Do not leave any major real-world object photorealistic — the entire visible scene must be reconstructed from LEGO pieces' },
+
+  { id:'vapor', nm:'蒸氣波', sub:'霓虹未來感',
+    p:'Restyle this photograph as a 1980s synthwave / vaporwave scene while keeping the people themselves photorealistic: saturated neon magenta and cyan colour grading, a glowing wireframe grid receding to the horizon, chrome and sunset gradients, soft neon rim light on the subjects and a hazy retro-futuristic atmosphere. Keep skin tones readable under the neon cast rather than blowing them out. Avoid chrome lettering, katakana signage, classical marble busts, palm-tree clip art and other vaporwave cliché props' }
 ];
 
 /* 圖生圖模型對輸入照片的保真度很高，會抵抗「把照片弄舊」這類大幅劣化，
@@ -1226,10 +1248,11 @@ retouchBtn.addEventListener('click', async () => {
     if (st && st.p){
       parts.push(st.p, STYLE_WHOLE);                 // 畫風模式：全圖統一轉換
     } else {
-      parts.push('keep this as a natural, realistic photograph and do not change its art style', KEEP_SCENE);
+      parts.push('Keep this as a natural, realistic photograph. Maintain realistic skin texture, natural lighting, authentic photographic detail and physically accurate materials. Do not stylise, illustrate, cartoonise, beautify or reinterpret the image', KEEP_SCENE);
     }
-    if (po && po.p) parts.push(`Adjust everyone's pose to: ${po.p}`);
-    parts.push(IDENTITY);
+    // 姿勢與「鎖住姿勢」互斥，二選一，避免同一段提示詞自相矛盾
+    parts.push(po && po.p ? `Adjust everyone's pose to: ${po.p}, keeping their faces and identities unchanged` : KEEP_POSE);
+    parts.push(lockClause(!!(st && st.looseId)));
     if (!st || st.keepClothes !== false) parts.push(KEEP_CLOTHES);
     parts.push(NO_TEXT);
 
