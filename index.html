@@ -35,6 +35,9 @@
   --stage-void:#10151d;
 }
 *,*::before,*::after{box-sizing:border-box;}
+/* 作者端的 display 規則（例如 .btn-row 的 flex）會蓋過 hidden 屬性，
+   這裡統一壓回去，避免標了 hidden 卻照樣顯示 */
+[hidden]{display:none !important;}
 html,body{margin:0;padding:0;}
 html{-webkit-text-size-adjust:100%;}
 body{
@@ -450,6 +453,14 @@ footer a:hover{text-decoration:underline;}
       <div class="progress-wrap" id="retouchProgress" hidden>
         <div class="pbar"><i></i></div>
         <div class="pmsg" id="retouchMsg">正在處理…</div>
+      </div>
+
+      <div class="ctrl-group" id="ageRow" hidden>
+        <div class="ctrl-label"><span>老舊程度</span><span class="val mono" id="ageVal">60%</span></div>
+        <div class="slider-row">
+          <input type="range" id="ageSlider" min="0" max="100" value="60" aria-label="老舊程度">
+        </div>
+        <p class="desc" style="margin:8px 0 0;">在本機疊上褪色、降對比、底片顆粒與四角暗角。<b>調整不會重新呼叫 API</b>，也不花額度。</p>
       </div>
 
       <div class="btn-row" id="revertRow" style="margin-top:12px;" hidden>
@@ -1037,13 +1048,85 @@ const PHOTO_STYLES = [
   { id:'ghibli',  nm:'吉卜力風',     sub:'手繪水彩感', p:'redraw this photo in the style of a Studio Ghibli / Hayao Miyazaki animated film, soft painterly backgrounds, warm nostalgic color palette, gentle hand-drawn line art' },
   { id:'pixar',   nm:'迪士尼皮克斯', sub:'3D 動畫質感', p:'redraw this photo in the style of a modern Disney/Pixar 3D animated movie, expressive eyes, smooth stylized 3D character shading, vibrant colorful lighting' },
   { id:'kdrama',  nm:'韓劇質感',     sub:'柔光唯美',   p:'restyle this photo like a cinematic Korean drama promotional still, soft glowing skin tones, warm backlight, dreamy bokeh background, pastel color grading' },
-  { id:'retro80', nm:'80年代復古',   sub:'台灣懷舊',   keepClothes:false,
-    p:'restyle this photo as an authentic 1980s Taiwanese family snapshot. Dress everyone in period-correct 1980s Taiwan fashion — high-waisted trousers, wide pointed shirt collars, knitted vests and tank tops, boxy blazers with shoulder pads, plaid or small floral prints, simple denim. Give them era hairstyles: tightly permed curls and voluminous waves, feathered side partings, thick blunt fringes. Critically, the result must look like a genuinely old photograph rather than a modern photo with a retro filter: a forty-year-old colour print on faded photographic paper, heavily shifted toward warm amber and magenta with sickly yellow-green shadows, washed-out milky blacks and flat low contrast, noticeably soft and unsharp with none of the clarity of a modern lens, coarse visible film grain throughout, blown-out highlights from a harsh direct on-camera flash, heavy corner vignetting, faint dust specks, hairline scratches and emulsion wear across the surface' },
+  /* aged:true = 回來後再走本機老化。模型抗拒大幅劣化，所以提示詞只負責
+     服裝、髮型與整體年代感，相紙褪色交給 agePhoto() 處理。 */
+  { id:'retro80', nm:'80年代復古',   sub:'台灣懷舊',   keepClothes:false, aged:true,
+    p:'restyle this photo as an authentic 1980s Taiwanese family snapshot. Dress everyone in period-correct 1980s Taiwan fashion — high-waisted trousers, wide pointed shirt collars, knitted vests and tank tops, boxy blazers with shoulder pads, plaid or small floral prints, simple denim. Give them era hairstyles: tightly permed curls and voluminous waves, feathered side partings, thick blunt fringes. Light it like a 1980s consumer film camera: warm slightly faded colour, soft imprecise focus and gentle halation, with the plain everyday framing of a family photo rather than a modern studio portrait' },
   { id:'lego',    nm:'樂高公仔',     sub:'玩具感',     p:'reimagine this entire scene as a LEGO build — everyone becomes a LEGO minifigure with glossy plastic texture and blocky simplified shapes, and the surroundings are rebuilt from LEGO bricks too, bright toy-like colors, studio product photography lighting' },
   { id:'vapor',   nm:'蒸氣波',       sub:'霓虹未來感', p:'restyle this photo in a retro synthwave / vaporwave aesthetic, neon pink and cyan color grading, glowing grid horizon, 1980s retro-futuristic atmosphere' }
 ];
 
+/* 圖生圖模型對輸入照片的保真度很高，會抵抗「把照片弄舊」這類大幅劣化，
+   單靠提示詞加字效果有限。所以換衣服髮型交給 AI，相紙劣化在本機做：
+   確定生效、可即時調整、不花額度。 */
+function agePhoto(img, amount){
+  const w = img.naturalWidth, h = img.naturalHeight;
+  const c = newCanvas(w, h);
+  const ctx = c.getContext('2d');
+  ctx.drawImage(img, 0, 0);
+  if (amount <= 0) return c;
+
+  const a = amount;
+  const contrast = 1 - 0.32 * a;     // 壓平反差
+  const lift     = 30 * a;           // 黑位上浮，黑色變成灰白
+  const desat    = 0.20 * a;
+  const grain    = 42 * a;
+  const vig      = 0.50 * a;
+  const cx = w / 2, cy = h / 2, maxD = Math.hypot(cx, cy);
+
+  const id = ctx.getImageData(0, 0, w, h), d = id.data;
+  for (let y = 0; y < h; y++){
+    const dy = (y - cy) / maxD;
+    for (let x = 0; x < w; x++){
+      const i = (y * w + x) * 4;
+      let r = (d[i]   - 128) * contrast + 128 + lift;
+      let g = (d[i+1] - 128) * contrast + 128 + lift;
+      let b = (d[i+2] - 128) * contrast + 128 + lift;
+
+      const lum = 0.299 * r + 0.587 * g + 0.114 * b;
+      r += (lum - r) * desat; g += (lum - g) * desat; b += (lum - b) * desat;
+
+      const shadow = 1 - Math.min(1, lum / 255);   // 陰影帶洋紅，高光偏琥珀
+      r = r * (1 + 0.11 * a) + 10 * a * shadow;
+      g = g * (1 + 0.02 * a);
+      b = b * (1 - 0.13 * a) + 8 * a * shadow;
+
+      const dx = (x - cx) / maxD;
+      const dist = Math.min(1, Math.sqrt(dx*dx + dy*dy) * 1.35);
+      const v = 1 - vig * Math.pow(dist, 2.4);
+      r *= v; g *= v; b *= v;
+
+      const n = (Math.random() - 0.5) * grain;     // 亮度顆粒
+      r += n; g += n; b += n;
+
+      d[i]   = r < 0 ? 0 : r > 255 ? 255 : r;
+      d[i+1] = g < 0 ? 0 : g > 255 ? 255 : g;
+      d[i+2] = b < 0 ? 0 : b > 255 ? 255 : b;
+    }
+  }
+  ctx.putImageData(id, 0, 0);
+  return c;
+}
+
+let agedUrl = null;
+async function ageToImage(img, amount){
+  const blob = await new Promise(r => agePhoto(img, amount).toBlob(r, 'image/png'));
+  const url = URL.createObjectURL(blob);
+  const out = await loadImage(url);
+  if (agedUrl) URL.revokeObjectURL(agedUrl);
+  agedUrl = url;
+  return out;
+}
+
+/** 換掉舞台上的圖但保留目前構圖（尺寸相同才可用） */
+function swapStageImage(img){
+  srcImg = img;
+  subject.src = img.src;
+  render();
+}
+
 let selPose = '', selPhotoStyle = '';
+let retouchRaw = null;            // AI 回傳、尚未老化的原圖
 const retouchBtn   = document.getElementById('retouchBtn');
 const retouchLabel = document.getElementById('retouchBtnLabel');
 const consentChk   = document.getElementById('consentChk');
@@ -1091,8 +1174,34 @@ document.getElementById('gotoKey').addEventListener('click', e => {
   setTimeout(() => box.scrollIntoView({ behavior:'smooth', block:'center' }), 60);
 });
 
+const ageRow = document.getElementById('ageRow');
+const ageSlider = document.getElementById('ageSlider');
+const ageVal = document.getElementById('ageVal');
+let ageTimer = null, ageBusy = false;
+
+async function applyAge(){
+  if (!retouchRaw || ageBusy) return;
+  ageBusy = true;
+  const want = ageSlider.value;
+  ageVal.textContent = '處理中…';          // 全解析度重算約需 1 秒，給個回饋
+  try { swapStageImage(await ageToImage(retouchRaw, Number(want) / 100)); }
+  catch (e){ console.error(e); }
+  finally {
+    ageBusy = false;
+    ageVal.textContent = ageSlider.value + '%';
+    if (ageSlider.value !== want) applyAge();   // 處理期間又被拖動，補跑最後一次
+  }
+}
+ageSlider.addEventListener('input', () => {
+  ageVal.textContent = ageSlider.value + '%';
+  clearTimeout(ageTimer);
+  ageTimer = setTimeout(applyAge, 200);     // 全解析度重算，拖曳時先防抖
+});
+
 document.getElementById('btnRevert').addEventListener('click', () => {
   if (!originalImg) return;
+  retouchRaw = null;
+  ageRow.hidden = true;
   loadIntoStage(originalImg, originalName, 'cover', true);
   document.getElementById('revertRow').hidden = true;
 });
@@ -1129,7 +1238,17 @@ retouchBtn.addEventListener('click', async () => {
 
     retouchMsg.textContent = '正在載入結果…';
     const img = await loadImage(out);
-    loadIntoStage(img, originalName + '_ai', 'cover', true);
+    if (st && st.aged){
+      retouchMsg.textContent = '正在套用相紙老化…';
+      retouchRaw = img;
+      ageVal.textContent = ageSlider.value + '%';
+      loadIntoStage(await ageToImage(img, Number(ageSlider.value) / 100), originalName + '_ai', 'cover', true);
+      ageRow.hidden = false;
+    } else {
+      retouchRaw = null;
+      ageRow.hidden = true;
+      loadIntoStage(img, originalName + '_ai', 'cover', true);
+    }
     document.getElementById('revertRow').hidden = false;
     document.getElementById('stage').scrollIntoView({ behavior:'smooth', block:'center' });
   } catch (e){
